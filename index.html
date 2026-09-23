@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sindicato</title>
+<style>
+:root{
+  --bg:#161512; --panel:#1f1e19; --line:#3a3730; --text:#f0ede4; --muted:#a39d8c;
+  --amber:#d9a441; --green:#4c8c5a; --blue:#3f6fa8; --red:#a8473f;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){ --bg:#f4f2ec; --panel:#ffffff; --line:#ddd8c8; --text:#231f18; --muted:#6b6455; }
+}
+:root[data-theme="dark"]{ --bg:#161512; --panel:#1f1e19; --line:#3a3730; --text:#f0ede4; --muted:#a39d8c; }
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+  display:flex; flex-direction:column; min-height:100%;
+}
+header{
+  padding:18px 20px 10px; display:flex; align-items:center; gap:12px;
+}
+header .back{
+  background:none; border:1px solid var(--line); color:var(--text); border-radius:8px;
+  padding:8px 12px; font-size:15px; cursor:pointer;
+}
+header h1{ font-size:19px; margin:0; font-weight:600; letter-spacing:.2px; }
+header .sub{ color:var(--muted); font-size:13px; margin-top:2px; }
+main{ flex:1; padding:6px 20px 30px; max-width:640px; width:100%; margin:0 auto; }
+
+.tiles{ display:grid; gap:14px; margin-top:18px; }
+.tile{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:26px 20px; text-align:left; cursor:pointer; color:var(--text);
+  font-size:20px; font-weight:600; transition:border-color .15s;
+}
+.tile:hover{ border-color:var(--amber); }
+.tile .n{ display:block; font-size:13px; color:var(--muted); font-weight:400; margin-top:4px; }
+
+.grid{
+  display:grid; gap:6px; margin-top:16px;
+}
+.unit{
+  aspect-ratio:1; border-radius:8px; border:1px solid var(--line); background:var(--panel);
+  color:var(--text); font-size:12px; display:flex; align-items:center; justify-content:center;
+  cursor:pointer; font-variant-numeric:tabular-nums;
+}
+.unit.p250{ background:var(--green); border-color:var(--green); color:#fff; }
+.unit.p350{ background:var(--blue); border-color:var(--blue); color:#fff; }
+.unit.vacante{ background:transparent; border-style:dashed; border-color:var(--amber); color:var(--amber); }
+.unit.atrasada{ background:var(--red); border-color:var(--red); color:#fff; }
+.histRow{ display:flex; gap:6px; margin:6px 0 4px; flex-wrap:wrap; }
+.histChip{
+  font-size:11px; padding:4px 8px; border-radius:10px; border:1px solid var(--line); color:var(--muted);
+}
+.histChip.si{ background:var(--green); border-color:var(--green); color:#fff; }
+.histChip.no{ background:var(--red); border-color:var(--red); color:#fff; }
+
+.legend{ display:flex; gap:16px; margin-top:16px; font-size:13px; color:var(--muted); flex-wrap:wrap; }
+.legend span{ display:inline-flex; align-items:center; gap:6px; }
+.dot{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+
+.stats{
+  display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;
+}
+.stat{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px;
+}
+.stat .v{ font-size:22px; font-weight:700; }
+.stat .l{ font-size:12px; color:var(--muted); margin-top:2px; }
+.stat.full{ grid-column:1/-1; }
+.stat .v.amber{ color:var(--amber); }
+
+.overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+  align-items:center; justify-content:center; padding:20px; z-index:10;
+}
+.overlay.open{ display:flex; }
+.modal{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:24px;
+  width:100%; max-width:340px; text-align:left; max-height:88vh; overflow-y:auto;
+}
+.modal h3{ margin:0 0 4px; font-size:18px; text-align:center; }
+.modal p.hint{ color:var(--muted); font-size:13px; margin:0 0 16px; text-align:center; }
+.field{ margin-bottom:12px; }
+.field label{ display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+.field input{
+  width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--bg); color:var(--text); font-size:15px;
+}
+.modal button{
+  display:block; width:100%; padding:14px; border-radius:10px; border:none;
+  font-size:16px; font-weight:600; cursor:pointer; margin-bottom:10px; color:#fff;
+}
+.b250{ background:var(--green); }
+.b350{ background:var(--blue); }
+.bclear{ background:transparent; color:var(--muted); border:1px solid var(--line) !important; }
+
+.client{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; gap:12px; cursor:pointer;
+}
+.client .info{ flex:1; }
+.client .nombre{ font-weight:600; font-size:16px; }
+.client .n{ color:var(--muted); font-size:13px; margin-top:2px; }
+.badge{ font-size:12px; font-weight:600; padding:6px 12px; border-radius:20px; white-space:nowrap; }
+.badge.si{ background:var(--green); color:#fff; }
+.badge.no{ background:transparent; border:1px solid var(--line); color:var(--muted); }
+.addbtn{
+  width:100%; padding:14px; border-radius:12px; border:1px dashed var(--line);
+  background:transparent; color:var(--muted); font-size:15px; cursor:pointer; margin-top:6px;
+}
+.bar{ height:8px; border-radius:4px; background:var(--line); overflow:hidden; margin-top:8px; }
+.bar .fill{ height:100%; background:var(--amber); }
+textarea#fPlacas{
+  width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--bg); color:var(--text); font-size:14px; min-height:80px; font-family:inherit;
+}
+</style>
+</head>
+<body>
+<header id="hdr"></header>
+<main id="main"></main>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="modalTitle">Unidad</h3>
+    <p class="hint">Datos del operador</p>
+    <div class="field"><label>Nombre</label><input id="fNombre" placeholder="Nombre completo"></div>
+    <div class="field"><label>Teléfono</label><input id="fTelefono" placeholder="10 dígitos"></div>
+    <div class="field"><label>Marca del carro</label><input id="fMarca" placeholder="Ej. Nissan Versa"></div>
+    <div class="field"><label>Placa</label><input id="fPlaca" placeholder="Ej. ABC-123-A"></div>
+    <div id="histUnidad"></div>
+    <p class="hint">Cuota de la semana</p>
+    <button class="b250" id="btn250">$250 — cuota normal</button>
+    <button class="b350" id="btn350">$350 — con protección</button>
+    <button class="bclear" id="btnClear">Quitar marca de pago</button>
+    <button class="bclear" id="btnBaja" style="color:var(--red);border-color:var(--red) !important;">Dar de baja al operador</button>
+    <button class="bclear" id="btnCancel">Cerrar</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlayCliente">
+  <div class="modal">
+    <h3 id="clienteTitle">Cliente</h3>
+    <div class="field"><label>Nombre</label><input id="cNombre" placeholder="Nombre del cliente"></div>
+    <div class="field"><label>Placas (una por línea)</label><textarea id="fPlacas" placeholder="ABC-123-A&#10;DEF-456-B"></textarea></div>
+    <div id="histCliente"></div>
+    <button class="b250" id="btnPagadoSi">Marcar pagado esta semana</button>
+    <button class="bclear" id="btnPagadoNo">Marcar no pagado</button>
+    <button class="bclear" id="btnGuardarCliente">Guardar y cerrar</button>
+    <button class="bclear" id="btnEliminarCliente" style="color:var(--red);border-color:var(--red) !important;">Eliminar cliente</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://cglwspqhiyrugelbrgqr.supabase.co";
+const SUPABASE_KEY = "sb_publishable_bpb3SbDLBRcJOyKUst4GrQ_JlklZsNL";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const LOCS = {
+  zuazua:     { label:"Zuazua",     rows:11, cols:10, total:110 },
+  carrizalejo:{ label:"Carrizalejo", rows:5,  cols:5,  total:25  }
+};
+
+let state = { screen:"home", loc:null, pending:null };
+let data = {};
+let saveTimer = null;
+let loaded = false; // no se guarda nada hasta haber leído bien de Supabase
+
+async function loadData(){
+  const mainEl = document.getElementById("main");
+  mainEl.innerHTML = "<p style='color:var(--muted);padding:20px 0;'>Cargando…</p>";
+  try{
+    const { data: row, error } = await sb.from("estado_sindicato").select("data").eq("id",1).single();
+    if(error) throw error;
+    data = row.data || {};
+    loaded = true;
+  }catch(e){
+    console.error("Error cargando:", e);
+    mainEl.innerHTML = "<p style='color:var(--red);padding:20px 0;'>No se pudo leer de Supabase: " + (e.message||e) + "</p><button class='addbtn' onclick='loadData()'>Reintentar</button>";
+    return; // sin datos cargados no se muestra ni se guarda nada
+  }
+  Object.keys(LOCS).forEach(k=>{ if(!data[k]) data[k]={}; });
+  if(!data.escolar) data.escolar = { clients: [] };
+  weeklyRollover();
+  render();
+}
+function saveData(){
+  if(!loaded) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    const { error } = await sb.from("estado_sindicato").update({data, updated_at:new Date().toISOString()}).eq("id",1);
+    if(error){
+      console.error("Error guardando:", error);
+      alert("No se pudo guardar en Supabase: " + error.message + "\nRevisa tu conexión antes de seguir capturando.");
+    }
+  }, 400);
+}
+
+function mondayOf(d){
+  const x = new Date(d);
+  const day = x.getDay(); // 0=Sun..6=Sat
+  const diff = day===0 ? -6 : 1-day;
+  x.setDate(x.getDate()+diff);
+  x.setHours(0,0,0,0);
+  return x.toISOString().slice(0,10);
+}
+function isoWeekday(){ const d=new Date().getDay(); return d===0?7:d; } // Mon=1..Sun=7
+function isAtrasadaHoy(){ return isoWeekday()>=3; } // miércoles en adelante
+
+function weeklyRollover(){
+  const currentMonday = mondayOf(new Date());
+  if(!data.weekStart){ data.weekStart = currentMonday; saveData(); return; }
+  if(data.weekStart === currentMonday) return; // misma semana, nada que hacer
+  const oldWeek = data.weekStart;
+  // Archivar taxis
+  Object.keys(LOCS).forEach(loc=>{
+    Object.keys(data[loc]).forEach(id=>{
+      if(id==="_historial") return;
+      const u = data[loc][id];
+      if(!u || !u.nombre) return;
+      if(!u.history) u.history = [];
+      u.history.push({week:oldWeek, pago:u.pago||null});
+      u.history = u.history.slice(-3);
+      u.pago = null;
+    });
+  });
+  // Archivar clientes escolar
+  data.escolar.clients.forEach(c=>{
+    if(!c.history) c.history = [];
+    c.history.push({week:oldWeek, pagado:!!c.pagado});
+    c.history = c.history.slice(-3);
+    c.pagado = false;
+  });
+  data.weekStart = currentMonday;
+  saveData();
+}
+loadData();
+
+function go(screen, loc){ state.screen=screen; state.loc=loc||null; render(); }
+
+function render(){
+  const hdr = document.getElementById("hdr");
+  const main = document.getElementById("main");
+
+  if(state.screen==="home"){
+    hdr.innerHTML = `<h1>Sindicato</h1>`;
+    main.innerHTML = `
+      <div class="tiles">
+        <button class="tile" onclick="go('taxis')">Taxis<span class="n">Zuazua · Carrizalejo</span></button>
+        <button class="tile" onclick="go('escolar')">Transporte Escolar<span class="n">Kínder · ${data.escolar.clients.length} cliente${data.escolar.clients.length===1?'':'s'}</span></button>
+      </div>`;
+    return;
+  }
+
+  if(state.screen==="taxis"){
+    hdr.innerHTML = `<button class="back" onclick="go('home')">←</button><div><h1>Taxis</h1><div class="sub">Elige la zona</div></div>`;
+    main.innerHTML = `
+      <div class="tiles">
+        ${Object.entries(LOCS).map(([k,v])=>`
+          <button class="tile" onclick="go('matrix','${k}')">${v.label}<span class="n">${v.total} unidades</span></button>
+        `).join("")}
+      </div>`;
+    return;
+  }
+
+  if(state.screen==="matrix"){
+    const conf = LOCS[state.loc];
+    hdr.innerHTML = `<button class="back" onclick="go('taxis')">←</button><div><h1>${conf.label}</h1><div class="sub">${conf.total} unidades</div></div>`;
+    let cells = "";
+    let n250=0, n350=0, nVacantes=0, nAtrasadas=0;
+    const atrasoActivo = isAtrasadaHoy();
+    for(let i=1;i<=conf.total;i++){
+      const id = String(i).padStart(2,"0");
+      const u = data[state.loc][id];
+      const val = u ? u.pago : null;
+      const ocupada = u && u.nombre;
+      let cls = "";
+      if(!ocupada){ cls="vacante"; nVacantes++; }
+      else if(val===250){ cls="p250"; n250++; }
+      else if(val===350){ cls="p350"; n350++; }
+      else if(atrasoActivo){ cls="atrasada"; nAtrasadas++; }
+      cells += `<div class="unit ${cls}" onclick="openPopup('${state.loc}','${id}')">${id}</div>`;
+    }
+    const pagadas = n250+n350;
+    const total = n250*250 + n350*350;
+    const protecc = n350*100;
+    main.innerHTML = `
+      <div class="stats">
+        <div class="stat"><div class="v">${pagadas}/${conf.total}</div><div class="l">unidades pagadas</div></div>
+        <div class="stat"><div class="v amber">$${total.toLocaleString('es-MX')}</div><div class="l">recaudado esta semana</div></div>
+        <div class="stat full"><div class="v">$${protecc.toLocaleString('es-MX')}</div><div class="l">cuenta Transporte (protección, ${n350} unidad${n350===1?'':'es'} con $350)</div></div>
+      </div>
+      <div class="grid" style="grid-template-columns:repeat(${conf.cols},1fr);">${cells}</div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--panel);border:1px solid var(--line)"></span>Sin pago</span>
+        <span><span class="dot" style="background:var(--green)"></span>$250</span>
+        <span><span class="dot" style="background:var(--blue)"></span>$350 (protección)</span>
+        <span><span class="dot" style="border:1px dashed var(--amber)"></span>Disponible (${nVacantes})</span>
+        ${nAtrasadas>0?`<span><span class="dot" style="background:var(--red)"></span>Atrasada, sin pagar (${nAtrasadas})</span>`:''}
+      </div>`;
+    return;
+  }
+
+  if(state.screen==="escolar"){
+    hdr.innerHTML = `<button class="back" onclick="go('home')">←</button><div><h1>Transporte Escolar</h1><div class="sub">Kínder — clientes con camionetas</div></div>`;
+    const clients = data.escolar.clients;
+    let totalPlacas=0, placasPagadas=0;
+    clients.forEach(c=>{ totalPlacas += c.placas.length; if(c.pagado) placasPagadas += c.placas.length; });
+    const esperado = totalPlacas*250;
+    const recaudado = placasPagadas*250;
+    const fondo = placasPagadas*100;
+    const ingresoTransporte = placasPagadas*150;
+    const utilidad = Math.max(0, fondo-3500);
+    const pct = Math.min(100, Math.round(fondo/3500*100));
+    main.innerHTML = `
+      <div class="stats">
+        <div class="stat"><div class="v">${placasPagadas}/${totalPlacas}</div><div class="l">camionetas pagadas</div></div>
+        <div class="stat"><div class="v amber">$${recaudado.toLocaleString('es-MX')}</div><div class="l">recaudado / $${esperado.toLocaleString('es-MX')} esperado</div></div>
+        <div class="stat full">
+          <div class="v">$${Math.min(fondo,3500).toLocaleString('es-MX')} / $3,500</div>
+          <div class="l">fondo para tránsito esta semana${utilidad>0?` — utilidad sindicato: $${utilidad.toLocaleString('es-MX')}`:''}</div>
+          <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="stat full"><div class="v">$${ingresoTransporte.toLocaleString('es-MX')}</div><div class="l">ingreso cuenta Transporte ($150 x camioneta pagada)</div></div>
+      </div>
+      <div style="margin-top:16px;">
+        ${clients.map((c,i)=>`
+          <div class="client" onclick="openCliente(${i})">
+            <div class="info">
+              <div class="nombre">${c.nombre||'(sin nombre)'}</div>
+              <div class="n">${c.placas.length} placa${c.placas.length===1?'':'s'} · $${(c.placas.length*250).toLocaleString('es-MX')}/semana</div>
+            </div>
+            <span class="badge ${c.pagado?'si':'no'}">${c.pagado?'Pagó':'Pendiente'}</span>
+          </div>
+        `).join("")}
+        <button class="addbtn" onclick="openCliente(-1)">+ Agregar cliente</button>
+      </div>`;
+    return;
+  }
+}
+
+function openPopup(loc, id){
+  state.pending = {loc, id};
+  const u = data[loc][id] || {};
+  document.getElementById("modalTitle").textContent = "Unidad " + id;
+  document.getElementById("fNombre").value = u.nombre || "";
+  document.getElementById("fTelefono").value = u.telefono || "";
+  document.getElementById("fMarca").value = u.marca || "";
+  document.getElementById("fPlaca").value = u.placa || "";
+  const histEl = document.getElementById("histUnidad");
+  if((u.history||[]).length){
+    histEl.innerHTML = `<div class="hint" style="margin:10px 0 2px;">Últimas semanas</div><div class="histRow">` +
+      u.history.map(h=>`<span class="histChip ${h.pago?'si':'no'}">${h.week}: ${h.pago?('$'+h.pago):'no pagó'}</span>`).join("") + `</div>`;
+  } else { histEl.innerHTML = ""; }
+  document.getElementById("overlay").classList.add("open");
+}
+function closePopup(){
+  document.getElementById("overlay").classList.remove("open");
+  state.pending = null;
+}
+document.getElementById("btn250").onclick = ()=> setPago(250);
+document.getElementById("btn350").onclick = ()=> setPago(350);
+document.getElementById("btnClear").onclick = ()=> setPago(null);
+document.getElementById("btnBaja").onclick = ()=> darDeBaja();
+document.getElementById("btnCancel").onclick = ()=>{ saveFields(); closePopup(); render(); };
+
+function saveFields(){
+  if(!state.pending) return;
+  const {loc,id} = state.pending;
+  const u = data[loc][id] || {};
+  u.nombre = document.getElementById("fNombre").value.trim();
+  u.telefono = document.getElementById("fTelefono").value.trim();
+  u.marca = document.getElementById("fMarca").value.trim();
+  u.placa = document.getElementById("fPlaca").value.trim();
+  data[loc][id] = u;
+  saveData();
+}
+
+function setPago(val){
+  if(!state.pending) return;
+  saveFields();
+  const {loc,id} = state.pending;
+  data[loc][id].pago = val;
+  saveData();
+  closePopup();
+  render();
+}
+
+function darDeBaja(){
+  if(!state.pending) return;
+  const {loc,id} = state.pending;
+  const u = data[loc][id];
+  if(!u || !u.nombre){ closePopup(); return; }
+  if(!confirm("¿Dar de baja a " + u.nombre + " de la unidad " + id + "? Se guardará en el historial.")) return;
+  if(!data[loc]._historial) data[loc]._historial = [];
+  data[loc]._historial.push({
+    unidad:id, nombre:u.nombre, telefono:u.telefono, marca:u.marca, placa:u.placa,
+    fecha_baja: new Date().toISOString().slice(0,10)
+  });
+  data[loc][id] = {};
+  saveData();
+  closePopup();
+  render();
+}
+
+function openCliente(idx){
+  state.pendingCliente = idx;
+  const c = idx>=0 ? data.escolar.clients[idx] : {nombre:"", placas:[], pagado:false};
+  document.getElementById("clienteTitle").textContent = idx>=0 ? "Editar cliente" : "Nuevo cliente";
+  document.getElementById("cNombre").value = c.nombre || "";
+  document.getElementById("fPlacas").value = (c.placas||[]).join("\n");
+  document.getElementById("btnEliminarCliente").style.display = idx>=0 ? "block" : "none";
+  const histEl = document.getElementById("histCliente");
+  if((c.history||[]).length){
+    histEl.innerHTML = `<div class="hint" style="margin:10px 0 2px;">Últimas semanas</div><div class="histRow">` +
+      c.history.map(h=>`<span class="histChip ${h.pagado?'si':'no'}">${h.week}: ${h.pagado?'pagó':'no pagó'}</span>`).join("") + `</div>`;
+  } else { histEl.innerHTML = ""; }
+  document.getElementById("overlayCliente").classList.add("open");
+}
+function closeCliente(){
+  document.getElementById("overlayCliente").classList.remove("open");
+  state.pendingCliente = undefined;
+}
+function readClienteForm(){
+  const nombre = document.getElementById("cNombre").value.trim();
+  const placas = document.getElementById("fPlacas").value.split("\n").map(p=>p.trim()).filter(Boolean);
+  return {nombre, placas};
+}
+function saveCliente(pagadoOverride){
+  const idx = state.pendingCliente;
+  const form = readClienteForm();
+  if(idx>=0){
+    const c = data.escolar.clients[idx];
+    c.nombre = form.nombre; c.placas = form.placas;
+    if(pagadoOverride!==undefined) c.pagado = pagadoOverride;
+  }else{
+    data.escolar.clients.push({nombre:form.nombre, placas:form.placas, pagado: pagadoOverride||false});
+  }
+  saveData();
+  closeCliente();
+  render();
+}
+document.getElementById("btnPagadoSi").onclick = ()=> saveCliente(true);
+document.getElementById("btnPagadoNo").onclick = ()=> saveCliente(false);
+document.getElementById("btnGuardarCliente").onclick = ()=>{
+  const idx = state.pendingCliente;
+  const pagado = idx>=0 ? data.escolar.clients[idx].pagado : false;
+  saveCliente(pagado);
+};
+document.getElementById("btnEliminarCliente").onclick = ()=>{
+  const idx = state.pendingCliente;
+  if(idx>=0 && confirm("¿Eliminar a " + (data.escolar.clients[idx].nombre||"este cliente") + "?")){
+    data.escolar.clients.splice(idx,1);
+    saveData();
+    closeCliente();
+    render();
+  }
+};
+
+</script>
+</body>
+</html>
