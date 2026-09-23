@@ -162,7 +162,9 @@ textarea#fPlacas{
     <div class="mbody">
       <div class="err" id="errCliente"></div>
       <div class="field"><label>Nombre</label><input id="cNombre" placeholder="Nombre del cliente"></div>
-      <div class="field"><label>Placas (una por línea)</label><textarea id="fPlacas" placeholder="ABC-123-A&#10;DEF-456-B"></textarea></div>
+      <div class="field"><label>Número de camionetas</label><input id="cNumCamionetas" type="number" min="1" step="1" inputmode="numeric" placeholder="Ej. 5"></div>
+      <div class="field"><label>Placas (opcional, una por línea)</label><textarea id="fPlacas" placeholder="ABC-123-A&#10;DEF-456-B"></textarea></div>
+      <div id="resumenCliente" class="hint" style="margin:-4px 0 12px;text-align:left;"></div>
       <div id="histCliente"></div>
       <button class="bsave" id="btnGuardarCliente" type="button">Guardar cambios</button>
       <button class="b250" id="btnPagadoSi" type="button">Marcar pagado esta semana</button>
@@ -183,7 +185,7 @@ const LOCS = {
   carrizalejo:{ label:"Carrizalejo", rows:5,  cols:5,  total:25  }
 };
 
-let state = { screen:"home", loc:null, pending:null };
+let state = { screen:"home", loc:null, pending:null, pendingCliente:undefined };
 let data = {};
 let saveTimer = null;
 let loaded = false; // no se guarda nada hasta haber leído bien de Supabase
@@ -203,6 +205,7 @@ async function loadData(){
   }
   Object.keys(LOCS).forEach(k=>{ if(!data[k]) data[k]={}; });
   if(!data.escolar) data.escolar = { clients: [] };
+  if(!Array.isArray(data.escolar.clients)) data.escolar.clients = [];
   weeklyRollover();
   render();
 }
@@ -229,6 +232,14 @@ function mondayOf(d){
 function isoWeekday(){ const d=new Date().getDay(); return d===0?7:d; } // Mon=1..Sun=7
 function isAtrasadaHoy(){ return isoWeekday()>=3; } // miércoles en adelante
 
+// Número de camionetas efectivo de un cliente:
+// si tiene camionetasDeclaradas > 0, ese manda; si no, contamos placas.
+function camionetasDe(c){
+  if(!c) return 0;
+  if(c.camionetasDeclaradas && c.camionetasDeclaradas > 0) return c.camionetasDeclaradas;
+  return (c.placas||[]).length;
+}
+
 function weeklyRollover(){
   const currentMonday = mondayOf(new Date());
   if(!data.weekStart){ data.weekStart = currentMonday; saveData(); return; }
@@ -249,7 +260,7 @@ function weeklyRollover(){
   // Archivar clientes escolar
   data.escolar.clients.forEach(c=>{
     if(!c.history) c.history = [];
-    c.history.push({week:oldWeek, pagado:!!c.pagado});
+    c.history.push({week:oldWeek, pagado:!!c.pagado, camionetas: camionetasDe(c)});
     c.history = c.history.slice(-3);
     c.pagado = false;
   });
@@ -268,11 +279,12 @@ function render(){
 
   if(state.screen==="home"){
     hdr.innerHTML = "";
+    const totalCamionetasHome = (data.escolar?.clients||[]).reduce((s,c)=>s+camionetasDe(c),0);
     main.innerHTML = `
       <h1 class="homeTitle">Sindicato</h1>
       <div class="tiles">
         <button class="tile big" onclick="go('taxis')">Taxis<span class="n">Zuazua · Carrizalejo</span></button>
-        <button class="tile big" onclick="go('escolar')">Transporte Escolar<span class="n">Kínder · ${data.escolar.clients.length} cliente${data.escolar.clients.length===1?'':'s'}</span></button>
+        <button class="tile big" onclick="go('escolar')">Transporte Escolar<span class="n">Kínder · ${data.escolar.clients.length} cliente${data.escolar.clients.length===1?'':'s'} · ${totalCamionetasHome} camioneta${totalCamionetasHome===1?'':'s'}</span></button>
       </div>`;
     return;
   }
@@ -329,18 +341,31 @@ function render(){
   if(state.screen==="escolar"){
     hdr.innerHTML = `<button class="back" onclick="go('home')">←</button><div><h1>Transporte Escolar</h1><div class="sub">Kínder — clientes con camionetas</div></div>`;
     const clients = data.escolar.clients;
-    let totalPlacas=0, placasPagadas=0;
-    clients.forEach(c=>{ totalPlacas += c.placas.length; if(c.pagado) placasPagadas += c.placas.length; });
-    const esperado = totalPlacas*250;
-    const recaudado = placasPagadas*250;
-    const fondo = placasPagadas*100;
-    const ingresoTransporte = placasPagadas*150;
+
+    let totalCamionetas=0, camionetasPagadas=0;
+    clients.forEach(c=>{
+      const n = camionetasDe(c);
+      totalCamionetas += n;
+      if(c.pagado) camionetasPagadas += n;
+    });
+
+    const esperado = totalCamionetas*250;
+    const recaudado = camionetasPagadas*250;
+    const pendiente = esperado - recaudado;
+    const fondo = camionetasPagadas*100;
+    const ingresoTransporte = camionetasPagadas*150;
     const utilidad = Math.max(0, fondo-3500);
     const pct = Math.min(100, Math.round(fondo/3500*100));
+    const nClientes = clients.length;
+    const clientesPagados = clients.filter(c=>c.pagado).length;
+
     main.innerHTML = `
       <div class="stats">
-        <div class="stat"><div class="v">${placasPagadas}/${totalPlacas}</div><div class="l">camionetas pagadas</div></div>
-        <div class="stat"><div class="v amber">$${recaudado.toLocaleString('es-MX')}</div><div class="l">recaudado / $${esperado.toLocaleString('es-MX')} esperado</div></div>
+        <div class="stat"><div class="v">${totalCamionetas}</div><div class="l">camionetas registradas (${nClientes} cliente${nClientes===1?'':'s'})</div></div>
+        <div class="stat"><div class="v">${camionetasPagadas}/${totalCamionetas}</div><div class="l">camionetas pagadas (${clientesPagados} cliente${clientesPagados===1?'':'s'})</div></div>
+        <div class="stat"><div class="v amber">$${esperado.toLocaleString('es-MX')}</div><div class="l">esperado esta semana</div></div>
+        <div class="stat"><div class="v" style="color:var(--green)">$${recaudado.toLocaleString('es-MX')}</div><div class="l">recaudado esta semana</div></div>
+        <div class="stat full"><div class="v" style="color:${pendiente>0?'var(--red)':'var(--green)'}">$${pendiente.toLocaleString('es-MX')}</div><div class="l">pendiente por cobrar</div></div>
         <div class="stat full">
           <div class="v">$${Math.min(fondo,3500).toLocaleString('es-MX')} / $3,500</div>
           <div class="l">fondo para tránsito esta semana${utilidad>0?` — utilidad sindicato: $${utilidad.toLocaleString('es-MX')}`:''}</div>
@@ -349,15 +374,21 @@ function render(){
         <div class="stat full"><div class="v">$${ingresoTransporte.toLocaleString('es-MX')}</div><div class="l">ingreso cuenta Transporte ($150 x camioneta pagada)</div></div>
       </div>
       <div style="margin-top:16px;">
-        ${clients.map((c,i)=>`
+        ${clients.map((c,i)=>{
+          const n = camionetasDe(c);
+          const cuota = n*250;
+          return `
           <div class="client" onclick="openCliente(${i})">
             <div class="info">
               <div class="nombre">${c.nombre||'(sin nombre)'}</div>
-              <div class="n">${c.placas.length} placa${c.placas.length===1?'':'s'} · $${(c.placas.length*250).toLocaleString('es-MX')}/semana</div>
+              <div class="n">
+                <b style="color:var(--text)">${n}</b> camioneta${n===1?'':'s'} ·
+                <b style="color:var(--amber)">$${cuota.toLocaleString('es-MX')}</b>/semana
+              </div>
             </div>
             <span class="badge ${c.pagado?'si':'no'}">${c.pagado?'Pagó':'Pendiente'}</span>
-          </div>
-        `).join("")}
+          </div>`;
+        }).join("")}
         <button class="addbtn" onclick="openCliente(-1)">+ Agregar cliente</button>
       </div>`;
     return;
@@ -458,21 +489,47 @@ document.getElementById("btnBaja").onclick = ()=> darDeBaja();
 let snapCliente = "";
 function readClienteForm(){
   const nombre = document.getElementById("cNombre").value.trim();
+  const camionetasDeclaradas = parseInt(document.getElementById("cNumCamionetas").value, 10) || 0;
   const placas = document.getElementById("fPlacas").value.split("\n").map(p=>p.trim().toUpperCase()).filter(Boolean);
-  return {nombre, placas};
+  return {nombre, camionetasDeclaradas, placas};
+}
+function actualizarResumenCliente(){
+  const n = parseInt(document.getElementById("cNumCamionetas").value, 10) || 0;
+  const placas = document.getElementById("fPlacas").value
+    .split("\n").map(p=>p.trim()).filter(Boolean);
+  const total = n * 250;
+  const el = document.getElementById("resumenCliente");
+  if(!el) return;
+
+  let html = n === 0
+    ? "Captura cuántas camionetas tiene el cliente."
+    : `<b style="color:var(--text)">${n}</b> camioneta${n===1?'':'s'} · paga <b style="color:var(--amber)">$${total.toLocaleString('es-MX')}</b> por semana`;
+
+  if(placas.length > 0){
+    const coincide = placas.length === n;
+    html += `<br><span style="color:${coincide?'var(--green)':'var(--amber)'}">` +
+      (coincide
+        ? `✓ ${placas.length} placas coinciden con el número declarado`
+        : `⚠️ Tienes ${placas.length} placa${placas.length===1?'':'s'} pero declaraste ${n} camioneta${n===1?'':'s'}`) +
+      `</span>`;
+  }
+  el.innerHTML = html;
 }
 function openCliente(idx){
   state.pendingCliente = idx;
-  const c = idx>=0 ? data.escolar.clients[idx] : {nombre:"", placas:[], pagado:false};
+  const c = idx>=0 ? data.escolar.clients[idx] : {nombre:"", camionetasDeclaradas:0, placas:[], pagado:false};
   document.getElementById("clienteTitle").textContent = idx>=0 ? "Editar cliente" : "Nuevo cliente";
   document.getElementById("cNombre").value = c.nombre || "";
+  const n = c.camionetasDeclaradas || (c.placas||[]).length || 0;
+  document.getElementById("cNumCamionetas").value = n || "";
   document.getElementById("fPlacas").value = (c.placas||[]).join("\n");
   document.getElementById("btnEliminarCliente").style.display = idx>=0 ? "block" : "none";
   const histEl = document.getElementById("histCliente");
   if((c.history||[]).length){
     histEl.innerHTML = `<div class="hint" style="margin:10px 0 2px;">Últimas semanas</div><div class="histRow">` +
-      c.history.map(h=>`<span class="histChip ${h.pagado?'si':'no'}">${h.week}: ${h.pagado?'pagó':'no pagó'}</span>`).join("") + `</div>`;
+      c.history.map(h=>`<span class="histChip ${h.pagado?'si':'no'}">${h.week}: ${h.pagado?'pagó':'no pagó'}${h.camionetas?` (${h.camionetas}🚐)`:''}</span>`).join("") + `</div>`;
   } else { histEl.innerHTML = ""; }
+  actualizarResumenCliente();
   showErr("errCliente","");
   snapCliente = JSON.stringify(readClienteForm());
   document.getElementById("overlayCliente").classList.add("open");
@@ -489,12 +546,16 @@ function validarCliente(){
   const f = readClienteForm();
   const idx = state.pendingCliente;
   if(!f.nombre){ showErr("errCliente","Captura el nombre del cliente."); return null; }
-  if(!f.placas.length){ showErr("errCliente","Agrega al menos una placa (una por línea)."); return null; }
-  const rep = f.placas.find((p,i)=>f.placas.indexOf(p)!==i);
-  if(rep){ showErr("errCliente","La placa "+rep+" está repetida en la lista."); return null; }
+  if(!f.camionetasDeclaradas || f.camionetasDeclaradas < 1){
+    showErr("errCliente","Captura cuántas camionetas tiene el cliente (mínimo 1)."); return null;
+  }
   const otros = data.escolar.clients.filter((_,i)=>i!==idx);
-  const usada = f.placas.find(p=>otros.some(c=>(c.placas||[]).some(x=>String(x).toUpperCase()===p)));
-  if(usada){ showErr("errCliente","La placa "+usada+" ya está registrada en otro cliente."); return null; }
+  if(f.placas.length){
+    const rep = f.placas.find((p,i)=>f.placas.indexOf(p)!==i);
+    if(rep){ showErr("errCliente","La placa "+rep+" está repetida en la lista."); return null; }
+    const usada = f.placas.find(p=>otros.some(c=>(c.placas||[]).some(x=>String(x).toUpperCase()===p)));
+    if(usada){ showErr("errCliente","La placa "+usada+" ya está registrada en otro cliente."); return null; }
+  }
   if(otros.some(c=>(c.nombre||"").trim().toLowerCase()===f.nombre.toLowerCase())){
     showErr("errCliente","Ya existe un cliente con ese nombre."); return null;
   }
@@ -506,10 +567,17 @@ function saveCliente(pagadoOverride){
   const idx = state.pendingCliente;
   if(idx>=0){
     const c = data.escolar.clients[idx];
-    c.nombre = f.nombre; c.placas = f.placas;
+    c.nombre = f.nombre;
+    c.camionetasDeclaradas = f.camionetasDeclaradas;
+    c.placas = f.placas;
     if(pagadoOverride!==undefined) c.pagado = pagadoOverride;
   }else{
-    data.escolar.clients.push({nombre:f.nombre, placas:f.placas, pagado:!!pagadoOverride});
+    data.escolar.clients.push({
+      nombre: f.nombre,
+      camionetasDeclaradas: f.camionetasDeclaradas,
+      placas: f.placas,
+      pagado: !!pagadoOverride
+    });
   }
   saveData(); closeCliente(); render();
 }
@@ -524,6 +592,8 @@ document.getElementById("btnEliminarCliente").onclick = ()=>{
     saveData(); closeCliente(); render();
   }
 };
+document.getElementById("cNumCamionetas").addEventListener("input", actualizarResumenCliente);
+document.getElementById("fPlacas").addEventListener("input", actualizarResumenCliente);
 
 document.addEventListener("keydown", e=>{
   if(e.key!=="Escape") return;
