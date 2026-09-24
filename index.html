@@ -263,6 +263,34 @@ function camionetasDe(c){
   return (c.placas||[]).length;
 }
 
+function computeSemanaEnCurso(){
+  const out = {};
+  Object.keys(LOCS).forEach(loc=>{
+    let n350=0, ingreso=0;
+    Object.keys(data[loc]).forEach(id=>{
+      if(id==="_historial") return;
+      const u = data[loc][id];
+      if(!u || !u.nombre || !u.pago) return;
+      ingreso += u.pago;
+      if(u.pago===350) n350++;
+    });
+    const transporteMonto = n350*100;
+    const bruto = ingreso - transporteMonto;
+    const gastos = (data.gastosFijos[loc]||[]).map(g=>({nombre:g.nombre, monto:g.monto}));
+    const totalGastos = gastos.reduce((s,g)=>s+g.monto,0);
+    const transporteKey = loc==="zuazua" ? "transporteZuazua" : "transporteCarrizalejo";
+    const utilidadKey = loc==="zuazua" ? "utilidadZuazua" : "utilidadCarrizalejo";
+    out[transporteKey] = { ingreso: transporteMonto };
+    out[utilidadKey] = { bruto, gastos, totalGastos, neto: bruto-totalGastos };
+  });
+  let camionetasPagadas = 0;
+  data.escolar.clients.forEach(c=>{ if(c.pagado) camionetasPagadas += camionetasDe(c); });
+  out.transporteEscolar = { ingreso: camionetasPagadas*150 };
+  const fondo = camionetasPagadas*100;
+  const transito = Math.min(fondo, 3500);
+  out.utilidadSindicato = { bruto: fondo, gastos:[{nombre:"Tránsito (tope $3,500/semana)", monto:transito}], totalGastos:transito, neto: Math.max(0,fondo-3500) };
+  return out;
+}
 function registrarMovimiento(cuentaKey, week, monto, concepto){
   if(!monto) return;
   if(!data.cuentas[cuentaKey]) data.cuentas[cuentaKey] = {saldo:0, movimientos:[]};
@@ -431,19 +459,31 @@ function render(){
       {key:"transporteEscolar", label:"Transporte Escolar", nota:"$150 por camioneta pagada"},
       {key:"utilidadSindicato", label:"Utilidad Sindicato", nota:"Lo que pasa del tope de $3,500 en tránsito, del escolar"}
     ];
+    const semana = computeSemanaEnCurso();
     main.innerHTML = CUENTAS_INFO.map(c=>{
       const cuenta = data.cuentas[c.key] || {saldo:0, movimientos:[]};
       const ultimos = (cuenta.movimientos||[]).slice(-4).reverse();
+      const en = semana[c.key] || {};
+      const esUtilidad = en.gastos !== undefined;
+      const enCursoHtml = esUtilidad
+        ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-top:2px;"><span>Saldo antes de gastos</span><span>$${(en.bruto||0).toLocaleString('es-MX')}</span></div>` +
+          (en.gastos||[]).map(g=>`<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:2px;"><span>− ${esc(g.nombre)}</span><span>$${g.monto.toLocaleString('es-MX')}</span></div>`).join("") +
+          `<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-top:4px;color:${(en.neto||0)<0?'var(--red)':'var(--text)'}"><span>Saldo después de gastos</span><span>$${(en.neto||0).toLocaleString('es-MX')}</span></div>`
+        : `<div style="display:flex;justify-content:space-between;font-size:13px;margin-top:2px;"><span>Se sumará esta semana</span><span>$${(en.ingreso||0).toLocaleString('es-MX')}</span></div>`;
       return `
         <div class="stat full" style="margin-bottom:12px;">
           <div class="l">${c.label}</div>
           <div class="v" style="color:${cuenta.saldo<0?'var(--red)':'var(--text)'}">$${cuenta.saldo.toLocaleString('es-MX')}</div>
           <div class="l" style="margin-top:2px;">${c.nota}</div>
-          ${ultimos.length ? `<div style="margin-top:8px;">${ultimos.map(m=>`
+          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);">
+            <div class="l" style="margin-bottom:2px;">Esta semana (aún no cierra)</div>
+            ${enCursoHtml}
+          </div>
+          ${ultimos.length ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">${ultimos.map(m=>`
             <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:3px;">
               <span>${m.week} · ${esc(m.concepto)}</span>
               <span style="color:${m.monto<0?'var(--red)':'var(--green)'}">${m.monto<0?'-':'+'}$${Math.abs(m.monto).toLocaleString('es-MX')}</span>
-            </div>`).join("")}</div>` : `<div style="margin-top:8px;font-size:12px;color:var(--muted);">Sin movimientos todavía — se registran cada lunes al cerrar la semana</div>`}
+            </div>`).join("")}</div>` : `<div style="margin-top:10px;font-size:12px;color:var(--muted);">Sin semanas cerradas todavía</div>`}
         </div>`;
     }).join("");
     return;
