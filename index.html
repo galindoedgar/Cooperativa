@@ -224,6 +224,11 @@ async function loadData(){
   Object.keys(LOCS).forEach(k=>{ if(!data[k]) data[k]={}; });
   if(!data.escolar) data.escolar = { clients: [] };
   if(!Array.isArray(data.escolar.clients)) data.escolar.clients = [];
+  if(!data.cuentas) data.cuentas = {};
+  ["transporteZuazua","transporteCarrizalejo","utilidadZuazua","utilidadCarrizalejo","transporteEscolar","utilidadSindicato"].forEach(k=>{
+    if(!data.cuentas[k]) data.cuentas[k] = {saldo:0, movimientos:[]};
+  });
+  if(!data.gastosFijos) data.gastosFijos = { zuazua:[{nombre:"Sueldo", monto:2000}], carrizalejo:[], escolar:[] };
   weeklyRollover();
   render();
 }
@@ -258,12 +263,47 @@ function camionetasDe(c){
   return (c.placas||[]).length;
 }
 
+function registrarMovimiento(cuentaKey, week, monto, concepto){
+  if(!monto) return;
+  if(!data.cuentas[cuentaKey]) data.cuentas[cuentaKey] = {saldo:0, movimientos:[]};
+  const c = data.cuentas[cuentaKey];
+  c.saldo = Math.round((c.saldo + monto) * 100) / 100;
+  c.movimientos.push({week, monto, concepto});
+}
 function weeklyRollover(){
   const currentMonday = mondayOf(new Date());
   if(!data.weekStart){ data.weekStart = currentMonday; saveData(); return; }
   if(data.weekStart === currentMonday) return; // misma semana, nada que hacer
   const oldWeek = data.weekStart;
-  // Archivar taxis
+
+  // --- Cuentas: calcular movimientos de la semana que cierra, con los pagos aún sin resetear ---
+  Object.keys(LOCS).forEach(loc=>{
+    let n350=0, ingreso=0;
+    Object.keys(data[loc]).forEach(id=>{
+      if(id==="_historial") return;
+      const u = data[loc][id];
+      if(!u || !u.nombre || !u.pago) return;
+      ingreso += u.pago;
+      if(u.pago===350) n350++;
+    });
+    const transporteKey = loc==="zuazua" ? "transporteZuazua" : "transporteCarrizalejo";
+    const utilidadKey = loc==="zuazua" ? "utilidadZuazua" : "utilidadCarrizalejo";
+    const transporteMonto = n350*100;
+    registrarMovimiento(transporteKey, oldWeek, transporteMonto, `Protección: ${n350} unidad${n350===1?'':'es'} de $350`);
+    registrarMovimiento(utilidadKey, oldWeek, ingreso - transporteMonto, `Cuotas cobradas menos transporte`);
+    (data.gastosFijos[loc]||[]).forEach(g=>{
+      registrarMovimiento(utilidadKey, oldWeek, -g.monto, g.nombre);
+    });
+  });
+  let camionetasPagadasCierre = 0;
+  data.escolar.clients.forEach(c=>{ if(c.pagado) camionetasPagadasCierre += camionetasDe(c); });
+  const ingresoTransporteEsc = camionetasPagadasCierre*150;
+  const fondoTransitoUtil = camionetasPagadasCierre*100;
+  const utilidadSindicatoMonto = Math.max(0, fondoTransitoUtil-3500);
+  registrarMovimiento("transporteEscolar", oldWeek, ingresoTransporteEsc, `${camionetasPagadasCierre} camioneta${camionetasPagadasCierre===1?'':'s'} pagada${camionetasPagadasCierre===1?'':'s'}`);
+  registrarMovimiento("utilidadSindicato", oldWeek, utilidadSindicatoMonto, "Excedente sobre tope de tránsito ($3,500)");
+
+  // Archivar taxis (historial permanente, ya no se recorta)
   Object.keys(LOCS).forEach(loc=>{
     Object.keys(data[loc]).forEach(id=>{
       if(id==="_historial") return;
@@ -271,15 +311,13 @@ function weeklyRollover(){
       if(!u || !u.nombre) return;
       if(!u.history) u.history = [];
       u.history.push({week:oldWeek, pago:u.pago||null});
-      u.history = u.history.slice(-3);
       u.pago = null;
     });
   });
-  // Archivar clientes escolar
+  // Archivar clientes escolar (historial permanente)
   data.escolar.clients.forEach(c=>{
     if(!c.history) c.history = [];
     c.history.push({week:oldWeek, pagado:!!c.pagado, camionetas: camionetasDe(c)});
-    c.history = c.history.slice(-3);
     c.pagado = false;
   });
   data.weekStart = currentMonday;
@@ -296,7 +334,51 @@ function applySearch(){
     el.classList.toggle("dim", !!q && !el.dataset.s.includes(q));
   });
 }
-function onBuscar(v){ searchQ = v; applySearch(); }
+function onBuscar(v){
+  searchQ = v;
+  if(state.screen==="historialTaxis"){ renderHistList(); return; }
+  applySearch();
+}
+function computeHistorialRows(){
+  const activos = [];
+  Object.entries(LOCS).forEach(([loc,conf])=>{
+    Object.keys(data[loc]).forEach(id=>{
+      if(id==="_historial") return;
+      const u = data[loc][id];
+      if(u && u.nombre) activos.push({locLabel:conf.label, id, nombre:u.nombre, marca:u.marca, placa:u.placa, fechaAlta:u.fechaAlta, history:u.history||[], estado:"activo"});
+    });
+  });
+  const bajas = [];
+  Object.entries(LOCS).forEach(([loc,conf])=>{
+    (data[loc]._historial||[]).forEach(h=>bajas.push({
+      locLabel:conf.label, id:h.unidad, nombre:h.nombre, marca:h.marca, placa:h.placa,
+      fechaAlta:h.fechaAlta, history:h.history||[], estado:"baja",
+      fecha_baja:h.fecha_baja, adeudo:h.adeudo||0, semanasSinPagar:h.semanasSinPagar||0
+    }));
+  });
+  return [...activos, ...bajas];
+}
+function renderHistRow(r){
+  const chips = (r.history||[]).slice().reverse().map(h=>`<span class="histChip ${h.pago?'si':'no'}">${h.week}: ${h.pago?('$'+h.pago):'no pagó'}</span>`).join("");
+  return `
+    <div class="client" style="cursor:default;">
+      <div class="info">
+        <div class="nombre">${esc(r.nombre)}</div>
+        <div class="n">${r.locLabel} · Unidad ${esc(r.id)} · ${r.estado==='activo'?('Activo'+(r.fechaAlta?' desde '+r.fechaAlta:'')):('Baja el '+r.fecha_baja)}${r.marca?' · '+esc(r.marca):''}${r.placa?' · '+esc(r.placa):''}</div>
+        ${r.estado==='baja' ? `<div class="n" style="color:${r.adeudo>0?'var(--red)':'var(--green)'};margin-top:4px;">${r.adeudo>0 ? 'Adeudo aprox: $'+r.adeudo.toLocaleString('es-MX')+' ('+r.semanasSinPagar+' semana'+(r.semanasSinPagar===1?'':'s')+' sin pagar, cuota de $250)' : 'Sin adeudo registrado'}</div>` : ''}
+        ${chips ? `<div class="histRow" style="margin-top:6px;">${chips}</div>` : ''}
+      </div>
+    </div>`;
+}
+function renderHistList(){
+  const el = document.getElementById("histList");
+  if(!el) return;
+  const q = norm(searchQ.trim());
+  const rows = computeHistorialRows().filter(r=>!q || norm((r.nombre||"")+" "+(r.placa||"")+" "+(r.id||"")).includes(q));
+  el.innerHTML = rows.length
+    ? rows.map(renderHistRow).join("")
+    : `<p class="hint" style="text-align:left;">${q?"Sin resultados.":"Todavía no hay historial capturado."}</p>`;
+}
 function go(screen, loc){ state.screen=screen; state.loc=loc||null; searchQ=""; render(); }
 
 function render(){
@@ -313,6 +395,7 @@ function render(){
       <div class="tiles">
         <button class="tile big" onclick="go('taxis')">Taxis<span class="n">Zuazua · Carrizalejo</span></button>
         <button class="tile big" onclick="go('escolar')">Transporte Escolar<span class="n">Kínder · ${data.escolar.clients.length} cliente${data.escolar.clients.length===1?'':'s'} · ${totalCamionetasHome} camioneta${totalCamionetasHome===1?'':'s'}</span></button>
+        <button class="tile" onclick="go('cuentas')">Cuentas<span class="n">Saldos separados por cuenta</span></button>
       </div>`;
     return;
   }
@@ -324,7 +407,45 @@ function render(){
         ${Object.entries(LOCS).map(([k,v])=>`
           <button class="tile" onclick="go('matrix','${k}')">${v.label}<span class="n">${v.total} unidades</span></button>
         `).join("")}
+        <button class="tile" onclick="go('historialTaxis')">Historial<span class="n">Buscar por nombre del operador</span></button>
       </div>`;
+    return;
+  }
+
+  if(state.screen==="historialTaxis"){
+    hdr.innerHTML = `<button class="back" onclick="go('taxis')">←</button><div><h1>Historial</h1><div class="sub">Zuazua y Carrizalejo, activos y de baja</div></div>`;
+    main.innerHTML = `
+      <input class="buscar" type="search" placeholder="Buscar por nombre, placa o unidad" value="${esc(searchQ)}" oninput="onBuscar(this.value)" style="margin-top:0;">
+      <div id="histList" style="margin-top:14px;"></div>`;
+    renderHistList();
+    return;
+  }
+
+  if(state.screen==="cuentas"){
+    hdr.innerHTML = `<button class="back" onclick="go('home')">←</button><div><h1>Cuentas</h1><div class="sub">Saldo acumulado — no se reinicia cada semana</div></div>`;
+    const CUENTAS_INFO = [
+      {key:"transporteZuazua", label:"Transporte Zuazua", nota:"$100 por cada unidad de $350"},
+      {key:"transporteCarrizalejo", label:"Transporte Carrizalejo", nota:"$100 por cada unidad de $350 (cuenta aparte de Zuazua)"},
+      {key:"utilidadZuazua", label:"Utilidad Zuazua", nota:"Cuotas cobradas, menos transporte y menos el sueldo ($2,000/semana)"},
+      {key:"utilidadCarrizalejo", label:"Utilidad Carrizalejo", nota:"Cuotas cobradas, menos transporte"},
+      {key:"transporteEscolar", label:"Transporte Escolar", nota:"$150 por camioneta pagada"},
+      {key:"utilidadSindicato", label:"Utilidad Sindicato", nota:"Lo que pasa del tope de $3,500 en tránsito, del escolar"}
+    ];
+    main.innerHTML = CUENTAS_INFO.map(c=>{
+      const cuenta = data.cuentas[c.key] || {saldo:0, movimientos:[]};
+      const ultimos = (cuenta.movimientos||[]).slice(-4).reverse();
+      return `
+        <div class="stat full" style="margin-bottom:12px;">
+          <div class="l">${c.label}</div>
+          <div class="v" style="color:${cuenta.saldo<0?'var(--red)':'var(--text)'}">$${cuenta.saldo.toLocaleString('es-MX')}</div>
+          <div class="l" style="margin-top:2px;">${c.nota}</div>
+          ${ultimos.length ? `<div style="margin-top:8px;">${ultimos.map(m=>`
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:3px;">
+              <span>${m.week} · ${esc(m.concepto)}</span>
+              <span style="color:${m.monto<0?'var(--red)':'var(--green)'}">${m.monto<0?'-':'+'}$${Math.abs(m.monto).toLocaleString('es-MX')}</span>
+            </div>`).join("")}</div>` : `<div style="margin-top:8px;font-size:12px;color:var(--muted);">Sin movimientos todavía — se registran cada lunes al cerrar la semana</div>`}
+        </div>`;
+    }).join("");
     return;
   }
 
@@ -484,6 +605,7 @@ function validarUnidad(requiereNombre){
 function aplicarUnidad(f){
   const {loc,id} = state.pending;
   const u = data[loc][id] || {};
+  if(!u.nombre && f.nombre) u.fechaAlta = new Date().toISOString().slice(0,10);
   Object.assign(u, f);
   data[loc][id] = u;
   return u;
@@ -507,9 +629,12 @@ function darDeBaja(){
   if(!u || !u.nombre){ showErr("errUnidad","Esta unidad no tiene operador guardado."); return; }
   if(!confirm("¿Dar de baja a " + u.nombre + " de la unidad " + id + "? Se guardará en el historial.")) return;
   if(!data[loc]._historial) data[loc]._historial = [];
+  const semanasSinPagar = (u.history||[]).filter(h=>!h.pago).length;
+  const adeudo = semanasSinPagar*250; // aproximado, cuota base de $250
   data[loc]._historial.push({
     unidad:id, nombre:u.nombre, telefono:u.telefono, marca:u.marca, placa:u.placa,
-    fecha_baja: new Date().toISOString().slice(0,10)
+    fechaAlta:u.fechaAlta||null, fecha_baja: new Date().toISOString().slice(0,10),
+    history:u.history||[], semanasSinPagar, adeudo
   });
   data[loc][id] = {};
   saveData(); closePopup(); render();
