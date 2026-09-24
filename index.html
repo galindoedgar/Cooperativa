@@ -41,13 +41,25 @@ main{ flex:1; padding:6px 20px 30px; max-width:640px; width:100%; margin:0 auto;
 .tile .n{ display:block; font-size:13px; color:var(--muted); font-weight:400; margin-top:4px; }
 
 .grid{
-  display:grid; gap:6px; margin-top:16px;
+  display:grid; gap:6px; margin-top:12px;
+  grid-template-columns:repeat(auto-fill, minmax(76px, 1fr));
 }
 .unit{
-  aspect-ratio:1; border-radius:8px; border:1px solid var(--line); background:var(--panel);
-  color:var(--text); font-size:12px; display:flex; align-items:center; justify-content:center;
-  cursor:pointer; font-variant-numeric:tabular-nums;
+  min-height:64px; border-radius:8px; border:1px solid var(--line); background:var(--panel);
+  color:var(--text); display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:2px; padding:5px 4px; text-align:center; cursor:pointer; transition:opacity .12s;
 }
+.unit .num{ font-size:11px; font-weight:700; opacity:.75; font-variant-numeric:tabular-nums; }
+.unit .nm{
+  font-size:11.5px; line-height:1.15; font-weight:600; width:100%; overflow:hidden;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;
+}
+.unit.dim{ opacity:.18; }
+.buscar{
+  width:100%; margin-top:14px; padding:11px 12px; font-size:15px; border-radius:10px;
+  border:1px solid var(--line); background:var(--panel); color:var(--text);
+}
+.buscar:focus{ outline:none; border-color:var(--amber); }
 .unit.p250{ background:var(--green); border-color:var(--green); color:#fff; }
 .unit.p350{ background:var(--blue); border-color:var(--blue); color:#fff; }
 .unit.vacante{ background:transparent; border-style:dashed; border-color:var(--amber); color:var(--amber); }
@@ -274,7 +286,17 @@ function weeklyRollover(){
 }
 loadData();
 
-function go(screen, loc){ state.screen=screen; state.loc=loc||null; render(); }
+let searchQ = "";
+function esc(t){ return String(t==null?"":t).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function norm(t){ return String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
+function applySearch(){
+  const q = norm(searchQ.trim());
+  document.querySelectorAll(".grid .unit").forEach(el=>{
+    el.classList.toggle("dim", !!q && !el.dataset.s.includes(q));
+  });
+}
+function onBuscar(v){ searchQ = v; applySearch(); }
+function go(screen, loc){ state.screen=screen; state.loc=loc||null; searchQ=""; render(); }
 
 function render(){
   const hdr = document.getElementById("hdr");
@@ -321,7 +343,8 @@ function render(){
       else if(val===250){ cls="p250"; n250++; }
       else if(val===350){ cls="p350"; n350++; }
       else if(atrasoActivo){ cls="atrasada"; nAtrasadas++; }
-      cells += `<div class="unit ${cls}" onclick="openPopup('${state.loc}','${id}')">${id}</div>`;
+      const busq = norm(id + " " + (u&&u.nombre||"") + " " + (u&&u.placa||"") + " " + (u&&u.marca||""));
+      cells += `<div class="unit ${cls}" data-s="${esc(busq)}" onclick="openPopup('${state.loc}','${id}')"><span class="num">${id}</span><span class="nm">${ocupada?esc(u.nombre):"libre"}</span></div>`;
     }
     const pagadas = n250+n350;
     const total = n250*250 + n350*350;
@@ -332,7 +355,8 @@ function render(){
         <div class="stat"><div class="v amber">$${total.toLocaleString('es-MX')}</div><div class="l">recaudado esta semana</div></div>
         <div class="stat full"><div class="v">$${protecc.toLocaleString('es-MX')}</div><div class="l">cuenta Transporte (protección, ${n350} unidad${n350===1?'':'es'} con $350)</div></div>
       </div>
-      <div class="grid" style="grid-template-columns:repeat(${conf.cols},1fr);">${cells}</div>
+      <input class="buscar" type="search" placeholder="Buscar por nombre, placa o unidad" value="${esc(searchQ)}" oninput="onBuscar(this.value)">
+      <div class="grid">${cells}</div>
       <div class="legend">
         <span><span class="dot" style="background:var(--panel);border:1px solid var(--line)"></span>Sin pago</span>
         <span><span class="dot" style="background:var(--green)"></span>$250</span>
@@ -340,6 +364,7 @@ function render(){
         <span><span class="dot" style="border:1px dashed var(--amber)"></span>Disponible (${nVacantes})</span>
         ${nAtrasadas>0?`<span><span class="dot" style="background:var(--red)"></span>Atrasada, sin pagar (${nAtrasadas})</span>`:''}
       </div>`;
+    applySearch();
     return;
   }
 
