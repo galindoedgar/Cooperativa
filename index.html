@@ -54,7 +54,8 @@ main{ flex:1; padding:6px 20px 30px; max-width:640px; width:100%; margin:0 auto;
   font-size:11.5px; line-height:1.15; font-weight:600; width:100%; overflow:hidden;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; word-break:break-word;
 }
-.unit.dim{ opacity:.18; }
+.unit.dim, .client.dim{ opacity:.18; }
+.client{ transition:opacity .12s; }
 .buscar{
   width:100%; margin-top:14px; padding:11px 12px; font-size:15px; border-radius:10px;
   border:1px solid var(--line); background:var(--panel); color:var(--text);
@@ -291,7 +292,7 @@ function esc(t){ return String(t==null?"":t).replace(/[&<>"']/g, c=>({"&":"&amp;
 function norm(t){ return String(t||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""); }
 function applySearch(){
   const q = norm(searchQ.trim());
-  document.querySelectorAll(".grid .unit").forEach(el=>{
+  document.querySelectorAll(".grid .unit, .client").forEach(el=>{
     el.classList.toggle("dim", !!q && !el.dataset.s.includes(q));
   });
 }
@@ -406,14 +407,16 @@ function render(){
 
       <button class="addbtn-top" onclick="openCliente(-1)">+ Agregar cliente</button>
 
+      <input class="buscar" type="search" placeholder="Buscar por cliente o placa" value="${esc(searchQ)}" oninput="onBuscar(this.value)" style="margin-top:0;margin-bottom:10px;">
+
       <div>
         ${clients.map((c,i)=>{
           const n = camionetasDe(c);
           const cuota = n*250;
           return `
-          <div class="client" onclick="openCliente(${i})">
+          <div class="client" data-s="${esc(norm((c.nombre||'') + ' ' + (c.placas||[]).join(' ')))}" onclick="openCliente(${i})">
             <div class="info">
-              <div class="nombre">${c.nombre||'(sin nombre)'}</div>
+              <div class="nombre">${c.nombre?esc(c.nombre):'(sin nombre)'}</div>
               <div class="n">
                 <b style="color:var(--text)">${n}</b> camioneta${n===1?'':'s'} ·
                 <b style="color:var(--amber)">$${cuota.toLocaleString('es-MX')}</b>/semana
@@ -423,6 +426,7 @@ function render(){
           </div>`;
         }).join("")}
       </div>`;
+    applySearch();
     return;
   }
 }
