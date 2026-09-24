@@ -123,6 +123,11 @@ main.center{ display:flex; flex-direction:column; justify-content:center; paddin
   width:100%; padding:14px; border-radius:12px; border:1px dashed var(--line);
   background:transparent; color:var(--muted); font-size:15px; cursor:pointer; margin-top:6px;
 }
+.addbtn-top{
+  width:100%; padding:14px; border-radius:12px; border:1px dashed var(--amber);
+  background:transparent; color:var(--amber); font-size:15px; font-weight:600; cursor:pointer;
+  margin-top:16px; margin-bottom:14px;
+}
 .bar{ height:8px; border-radius:4px; background:var(--line); overflow:hidden; margin-top:8px; }
 .bar .fill{ height:100%; background:var(--amber); }
 textarea#fPlacas{
@@ -373,7 +378,10 @@ function render(){
         </div>
         <div class="stat full"><div class="v">$${ingresoTransporte.toLocaleString('es-MX')}</div><div class="l">ingreso cuenta Transporte ($150 x camioneta pagada)</div></div>
       </div>
-      <div style="margin-top:16px;">
+
+      <button class="addbtn-top" onclick="openCliente(-1)">+ Agregar cliente</button>
+
+      <div>
         ${clients.map((c,i)=>{
           const n = camionetasDe(c);
           const cuota = n*250;
@@ -389,7 +397,6 @@ function render(){
             <span class="badge ${c.pagado?'si':'no'}">${c.pagado?'Pagó':'Pendiente'}</span>
           </div>`;
         }).join("")}
-        <button class="addbtn" onclick="openCliente(-1)">+ Agregar cliente</button>
       </div>`;
     return;
   }
